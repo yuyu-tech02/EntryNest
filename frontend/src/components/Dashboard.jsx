@@ -1,14 +1,7 @@
 import { colors } from '../styles/colors';
+import { calculateDaysUntil } from '../utils/deadline';
 
 export default function Dashboard({ companies }) {
-  const calculateDaysUntil = (deadlineStr) => {
-    const deadline = new Date(deadlineStr);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    deadline.setHours(0, 0, 0, 0);
-    return Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
-  };
-
   const stats = {
     total: companies.length,
     withDeadline: companies.filter(c => c.deadline).length,

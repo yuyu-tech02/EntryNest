@@ -1,0 +1,207 @@
+# EntryNest 設計書 & ロードマップ（最新版 / v0.2.1 / Docker不使用）
+
+## 0. 概要
+EntryNestは、就活中のユーザーが「企業ごとの就活状況（締切・進捗・ES提出履歴など）を素早く把握」できるようにするWebアプリ。
+既存の就活サービス（マイナビ等）では管理しづらい「自分用の情報（ES本文/改稿履歴/提出先/結果/メモ）」を企業単位で一元管理する。
+
+---
+
+## 1. 目的 / 成功条件
+### 目的
+- 企業ごとの就活状況を“素早く”把握できる
+- ESの改善（版管理）と提出履歴が追える
+- Web上に公開・運用可能な形でローンチできる（**Docker無し**）
+
+### 成功条件（最低）
+- ログイン後、ダッシュボードで企業ごとの「締切・ステータス・直近更新」が見える
+- 企業詳細で「ES版・提出日・提出先・結果」が一箇所にまとまる
+- ES版同士の差分表示（同一企業内）を見られる（設定で無効化も可能）
+- 複数ユーザーが同時利用しても、各ユーザーのデータが完全に分離される（IDOR対策）
+
+---
+
+## 2. スコープ
+### MVP（今回やる）
+- ユーザー登録 / ログイン（メール＋パスワード）
+- 企業CRUD
+  - 企業名 / 職種 / 応募経路 / 締切（日付） / ステータス（自由記入） / メモ
+- ES版管理（企業ごとに複数）
+  - 提出日 / 提出先 / 結果（通過/落ち） / メモ / 本文（テキスト）
+- ES差分（同一企業内のES版同士）
+  - 設定で「差分機能ON/OFF」
+- 監査ログ
+  - ログイン成功/失敗
+  - 重要操作（企業削除、ES削除、ES更新、設定変更）
+- ブルートフォース対策（強め）
+  - ロックアウト＋レート制限
+
+### 非MVP（後回し）
+- 分析（傾向分析など）
+- AI（添削/要約/提案）
+- 共有（他者との共有）
+- ファイルアップロード（提出書類の実体保存）
+- 通知（締切リマインド）
+
+---
+
+## 3. 技術選定（Docker不使用）
+### 全体方針
+- 「早く公開して作り切る」優先
+- CSRF/CORSの沼を避けるため、**フロントはビルドしてDjangoが同一ドメインで配信**
+- **Dockerは使わない（ローカル/CI/本番すべて）**
+
+### 採用スタック
+- Frontend: React + Vite（ビルド成果物をDjangoに同梱）
+- Backend: Django + Django REST Framework（DRF）
+- Auth: DjangoセッションCookie方式（CSRF必須）
+- DB: Neon（PostgreSQL）
+- Hosting: Render（Docker無し）
+- CI: GitHub Actions（Docker無しでbuild/check）
+
+---
+
+## 4. システム構成（論理）
+### 4.1 同一ドメイン配信（SPA + API）
+- Djangoが `index.html` を返し、SPAとして動作
+- Reactのビルド成果物（JS/CSS）は Djangoの `static/` として配信
+- APIは同一オリジン `/api/...` で提供
+
+### 4.2 データフロー
+1. ユーザーがログイン（セッションCookie発行）
+2. Reactが `/api/...` に `credentials: include` 付きでアクセス
+3. Djangoが `request.user` でデータを必ずフィルタ（ユーザー分離）
+
+---
+
+## 5. 画面設計（最小）
+1) 認証
+- ログイン / 新規登録 / ログアウト
+
+2) ダッシュボード
+- 企業一覧（企業名 / 職種 / 締切 / ステータス / 最終更新）
+- 絞り込み（ステータス・締切が近い順など）
+
+3) 企業詳細
+- 企業情報（固定項目＋メモ）
+- ES一覧（提出日/提出先/結果/メモ/作成日時）
+- ES新規作成、企業編集
+
+4) ES編集
+- 本文（テキスト）
+- 提出日/提出先/結果/メモ
+- 保存
+
+5) ES差分（diff_enabled=trueのみ）
+- 比較元/比較先の選択 + 差分表示
+
+6) 設定
+- diff_enabled ON/OFF
+
+---
+
+## 6. データモデル（最小・安全重視）
+※全モデルに「所有者」を持たせ、IDORを物理的に潰す方針
+
+### 6.1 User
+- Django標準Userを基本に運用（途中でカスタムUserに切替しない：地雷回避）
+- メールログインは運用で吸収（例：username=email など）
+
+### 6.2 UserSettings（推奨）
+- user（OneToOne -> User）
+- diff_enabled（bool, default: true）
+> User本体に追加せず、設定用モデルで拡張しやすくする。
+
+### 6.3 Company
+- id
+- owner（FK -> User）※必須
+- name
+- job_role
+- apply_route
+- deadline（Date）
+- status_text（自由記入）
+- memo（Text）
+- created_at / updated_at
+
+### 6.4 ESVersion
+- id
+- owner（FK -> User）※必須
+- company（FK -> Company）
+- body（Text）※常にテキスト
+- submitted_at（Date, null可）
+- submitted_via（Text）
+- result（Enum: PASS/FAIL/UNKNOWN 等）
+- memo（Text）
+- created_at / updated_at
+
+### 6.5 AuditLog
+- id
+- user（FK -> User, null可）
+- input_email（失敗時用）
+- action（Enum）
+  - LOGIN_SUCCESS / LOGIN_FAIL
+  - COMPANY_DELETE / ES_DELETE / ES_UPDATE / SETTINGS_UPDATE 等
+- target_type（Text）
+- target_id（int, null可）
+- ip（Text）
+- user_agent（Text）
+- created_at
+
+---
+
+## 7. API設計（DRF想定・最小）
+### 認証
+- POST `/api/auth/login`
+- POST `/api/auth/logout`
+- GET  `/api/me`（ユーザー情報 + diff_enabled）
+- PATCH `/api/me/settings`（diff_enabled更新）
+
+### 企業
+- GET    `/api/companies`
+- POST   `/api/companies`
+- GET    `/api/companies/{id}`
+- PATCH  `/api/companies/{id}`
+- DELETE `/api/companies/{id}`
+
+### ES
+- GET    `/api/companies/{company_id}/es`
+- POST   `/api/companies/{company_id}/es`
+- GET    `/api/es/{id}`
+- PATCH  `/api/es/{id}`
+- DELETE `/api/es/{id}`
+
+### 監査ログ（自分のログのみ）
+- GET `/api/auditlogs`
+
+#### 実装ルール（超重要）
+- **全取得・更新・削除は必ず `owner=request.user` でフィルタ**
+- `get_queryset()` で絞り込みを強制
+- create時は `owner=request.user` をサーバ側で強制付与
+
+---
+
+## 8. セキュリティ設計
+### 8.1 認証（セッションCookie）
+- Cookie: Secure/HttpOnly/SameSite=Lax（本番）
+- Reactは `credentials: "include"` を必須
+- CSRF：同一ドメイン前提でDjango流儀（ヘッダ送付）
+
+### 8.2 ブルートフォース対策（Phase5）
+- ロックアウト：django-axes
+- レート制限：django-ratelimit等（/login）
+- 監査ログへ LOGIN_FAIL を蓄積
+
+### 8.3 XSS対策
+- ES本文・メモは常にテキスト表示（HTMLとして解釈しない）
+- 差分表示もHTML埋め込みしない
+- MarkdownはMVPで入れない
+
+### 8.4 監査ログ
+- 成功/失敗ログイン、重要操作を記録（IP/UA含む）
+
+---
+
+## 9. CI/CD（Docker無し）
+### 9.1 CI（GitHub Actions）
+- push/PRで自動実行
+  - frontend: `npm ci` → `npm run build`
+  - backend: `pip install -r requirements.txt` → `python manag

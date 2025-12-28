@@ -14,6 +14,7 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+import os
 from django.contrib import admin
 from django.urls import path, re_path, include
 from django.views.generic import TemplateView
@@ -36,8 +37,11 @@ router.register(r"companies", CompanyViewSet, basename="company")
 router.register(r"es", ESVersionViewSet, basename="es")
 router.register(r"auditlogs", AuditLogViewSet, basename="auditlog")
 
+# Custom admin URL for security (use environment variable or default to 'secure-admin/')
+ADMIN_URL = os.getenv('DJANGO_ADMIN_URL', 'secure-admin/')
+
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path(ADMIN_URL, admin.site.urls),
 
     # API routes
     path("api/", include(router.urls)),
@@ -67,8 +71,9 @@ urlpatterns = [
     ),
 
     # SPA fallback (for frontend)
+    # Note: Update regex if ADMIN_URL is changed
     re_path(
-        r"^(?!api/|admin/|static/|media/).*$",
+        r"^(?!api/|secure-admin/|static/|media/).*$",
         never_cache(TemplateView.as_view(template_name="frontend/index.html")),
     ),
 ]

@@ -1,3 +1,6 @@
+"""
+Authentication views for user registration, login, logout, and profile management.
+"""
 from typing import Any, Dict, cast
 
 from django.contrib.auth import authenticate, login as django_login, logout as django_logout, get_user_model
@@ -8,30 +11,24 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import UserSettings, AuditLog
-from core.serializers import LoginSerializer, RegisterSerializer, UserSettingsUpdateSerializer
+from .models import UserSettings, AuditLog
+from .serializers import LoginSerializer, RegisterSerializer, UserSettingsUpdateSerializer
+from .utils import get_client_ip, get_user_agent
 
 User = get_user_model()
 
-
-def _get_client_ip(request):
-    """Extract client IP address from request headers."""
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
+# Rate limit error response
+RATE_LIMIT_RESPONSE = Response(
+    {"detail": "Too many requests. Please try again later."},
+    status=status.HTTP_429_TOO_MANY_REQUESTS
+)
 
 
-def _get_user_agent(request):
-    """Extract user agent from request headers."""
-    return request.META.get('HTTP_USER_AGENT', '')
-
-
-def _me_payload(user):
-    """Return user payload with settings and profile."""
-    # Ensure settings exists (for existing users)
+def _build_user_payload(user) -> dict:
+    """
+    Build user payload with settings and profile information.
+    Creates UserSettings if it doesn't exist (for existing users).
+    """
     settings_obj, _ = UserSettings.objects.get_or_create(user=user)
     # Email: username=email を想定。emailフィールドがあれば優先。
     email = getattr(user, "email", "") or getattr(user, "username", "")
@@ -44,19 +41,26 @@ def _me_payload(user):
     }
 
 
+def _create_audit_log(request, action: AuditLog.Action, user=None, input_email: str = "") -> None:
+    """Helper to create audit log entries for authentication events."""
+    AuditLog.objects.create(
+        user=user,
+        input_email=input_email,
+        action=action,
+        ip_address=get_client_ip(request),
+        user_agent=get_user_agent(request),
+    )
+
+
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class RegisterView(APIView):
-    """User registration endpoint."""
+    """User registration endpoint with rate limiting."""
     permission_classes = [AllowAny]
-    authentication_classes = []  # Disable SessionAuthentication to enforce CSRF
+    authentication_classes = []
 
     def post(self, request):
-        # Check if rate limited
         if getattr(request, 'limited', False):
-            return Response(
-                {"detail": "Too many requests. Please try again later."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS
-            )
+            return RATE_LIMIT_RESPONSE
 
         ser = RegisterSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -80,31 +84,20 @@ class RegisterView(APIView):
 
         # Auto-login after registration
         django_login(request, user)
+        _create_audit_log(request, AuditLog.Action.LOGIN_SUCCESS, user=user)
 
-        # Audit log: LOGIN_SUCCESS (after registration)
-        AuditLog.objects.create(
-            user=user,
-            action=AuditLog.Action.LOGIN_SUCCESS,
-            ip_address=_get_client_ip(request),
-            user_agent=_get_user_agent(request),
-        )
-
-        return Response(_me_payload(user), status=status.HTTP_201_CREATED)
+        return Response(_build_user_payload(user), status=status.HTTP_201_CREATED)
 
 
 @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True), name='post')
 class LoginView(APIView):
-    """User login endpoint."""
+    """User login endpoint with rate limiting."""
     permission_classes = [AllowAny]
-    authentication_classes = []  # Disable SessionAuthentication to enforce CSRF
+    authentication_classes = []
 
     def post(self, request):
-        # Check if rate limited
         if getattr(request, 'limited', False):
-            return Response(
-                {"detail": "Too many requests. Please try again later."},
-                status=status.HTTP_429_TOO_MANY_REQUESTS
-            )
+            return RATE_LIMIT_RESPONSE
 
         ser = LoginSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -116,30 +109,16 @@ class LoginView(APIView):
         user = authenticate(request, username=username, password=password)
 
         if user is None:
-            # Audit log: LOGIN_FAIL
-            AuditLog.objects.create(
-                user=None,
-                input_email=username,
-                action=AuditLog.Action.LOGIN_FAIL,
-                ip_address=_get_client_ip(request),
-                user_agent=_get_user_agent(request),
-            )
+            _create_audit_log(request, AuditLog.Action.LOGIN_FAIL, input_email=username)
             return Response(
                 {"detail": "Invalid credentials."},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
         django_login(request, user)
+        _create_audit_log(request, AuditLog.Action.LOGIN_SUCCESS, user=user)
 
-        # Audit log: LOGIN_SUCCESS
-        AuditLog.objects.create(
-            user=user,
-            action=AuditLog.Action.LOGIN_SUCCESS,
-            ip_address=_get_client_ip(request),
-            user_agent=_get_user_agent(request),
-        )
-
-        return Response(_me_payload(user), status=status.HTTP_200_OK)
+        return Response(_build_user_payload(user), status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):
@@ -147,14 +126,7 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # Audit log: LOGOUT
-        AuditLog.objects.create(
-            user=request.user,
-            action=AuditLog.Action.LOGOUT,
-            ip_address=_get_client_ip(request),
-            user_agent=_get_user_agent(request),
-        )
-
+        _create_audit_log(request, AuditLog.Action.LOGOUT, user=request.user)
         django_logout(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -164,40 +136,35 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(_me_payload(request.user), status=status.HTTP_200_OK)
+        return Response(_build_user_payload(request.user), status=status.HTTP_200_OK)
 
 
+@method_decorator(ratelimit(key='user', rate='30/m', method='PATCH', block=True), name='patch')
 class MeSettingsView(APIView):
-    """Update user settings and profile endpoint."""
+    """Update user settings and profile endpoint with rate limiting."""
     permission_classes = [IsAuthenticated]
 
+    # Fields that can be updated via this endpoint
+    ALLOWED_FIELDS = {'diff_enabled', 'display_name', 'graduation_year'}
+
     def patch(self, request):
+        if getattr(request, 'limited', False):
+            return RATE_LIMIT_RESPONSE
+
         ser = UserSettingsUpdateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
         validated_data = cast(Dict[str, Any], ser.validated_data)
         settings_obj, _ = UserSettings.objects.get_or_create(user=request.user)
 
-        # Update fields that are provided
+        # Update only provided fields
         update_fields = ["updated_at"]
-        if "diff_enabled" in validated_data:
-            settings_obj.diff_enabled = validated_data["diff_enabled"]
-            update_fields.append("diff_enabled")
-        if "display_name" in validated_data:
-            settings_obj.display_name = validated_data["display_name"]
-            update_fields.append("display_name")
-        if "graduation_year" in validated_data:
-            settings_obj.graduation_year = validated_data["graduation_year"]
-            update_fields.append("graduation_year")
+        for field in self.ALLOWED_FIELDS:
+            if field in validated_data:
+                setattr(settings_obj, field, validated_data[field])
+                update_fields.append(field)
 
         settings_obj.save(update_fields=update_fields)
+        _create_audit_log(request, AuditLog.Action.SETTINGS_UPDATE, user=request.user)
 
-        # Audit log: SETTINGS_UPDATE
-        AuditLog.objects.create(
-            user=request.user,
-            action=AuditLog.Action.SETTINGS_UPDATE,
-            ip_address=_get_client_ip(request),
-            user_agent=_get_user_agent(request),
-        )
-
-        return Response(_me_payload(request.user), status=status.HTTP_200_OK)
+        return Response(_build_user_payload(request.user), status=status.HTTP_200_OK)

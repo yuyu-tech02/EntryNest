@@ -170,6 +170,13 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# File upload settings
+MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_UPLOAD_EXTENSIONS = [
+    '.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png',
+    '.xls', '.xlsx', '.ppt', '.pptx', '.zip'
+]
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
@@ -201,12 +208,11 @@ AUTHENTICATION_BACKENDS = [
 
 AXES_FAILURE_LIMIT = 5  # Lock after 5 failed attempts
 AXES_COOLOFF_TIME = 1800  # 30 minutes lockout (in seconds)
-AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP = True
 AXES_RESET_ON_SUCCESS = True  # Reset failure count on successful login
 AXES_LOCKOUT_PARAMETERS = ['username', 'ip_address']
 
 
-# CORS settings (for development)
+# CORS settings
 
 if DEBUG:
     CORS_ALLOWED_ORIGINS = [
@@ -216,6 +222,16 @@ if DEBUG:
     CSRF_TRUSTED_ORIGINS = [
         'http://localhost:5173',
     ]
+else:
+    # Production: Read from environment variable
+    cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in cors_origins.split(',')
+        if origin.strip()
+    ]
+    CORS_ALLOW_CREDENTIALS = True
+    CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 
 # Session and CSRF settings
@@ -234,6 +250,7 @@ CSRF_COOKIE_SECURE = not DEBUG  # True in production
 X_FRAME_OPTIONS = 'DENY'  # Prevent clickjacking
 SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevent MIME sniffing
 SECURE_BROWSER_XSS_FILTER = True  # Enable XSS filter
+SECURE_REFERRER_POLICY = 'same-origin'  # Control referrer information
 
 # Production-only security settings
 if not DEBUG:
@@ -241,3 +258,66 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+
+# Logging configuration
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'maxBytes': 1024 * 1024 * 15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+        'security_file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'maxBytes': 1024 * 1024 * 15,  # 15MB
+            'backupCount': 10,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['security_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'axes': {
+            'handlers': ['security_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}

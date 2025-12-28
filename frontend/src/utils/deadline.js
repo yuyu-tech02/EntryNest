@@ -1,6 +1,11 @@
 import { colors } from '../styles/colors';
 
-export function getDeadlineUrgency(deadlineStr) {
+/**
+ * Calculate the number of days until a deadline.
+ * @param {string} deadlineStr - The deadline date string
+ * @returns {number|null} Days until deadline (negative if past), or null if no deadline
+ */
+export function calculateDaysUntil(deadlineStr) {
   if (!deadlineStr) return null;
 
   const deadline = new Date(deadlineStr);
@@ -8,7 +13,13 @@ export function getDeadlineUrgency(deadlineStr) {
   today.setHours(0, 0, 0, 0);
   deadline.setHours(0, 0, 0, 0);
 
-  const daysUntil = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
+  return Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
+}
+
+export function getDeadlineUrgency(deadlineStr) {
+  if (!deadlineStr) return null;
+
+  const daysUntil = calculateDaysUntil(deadlineStr);
 
   if (daysUntil < 0) {
     return {

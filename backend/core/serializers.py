@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import Company, ESVersion, AuditLog
@@ -73,24 +74,23 @@ class ESVersionSerializer(serializers.ModelSerializer):
         return value
 
     def validate_file(self, value):
-        """Validate uploaded file type and size."""
+        """Validate uploaded file type and size using settings constants."""
         if value:
-            # Max file size: 10MB
-            max_size = 10 * 1024 * 1024
+            max_size = settings.MAX_UPLOAD_FILE_SIZE
+            max_size_mb = max_size / (1024 * 1024)
+
             if value.size > max_size:
                 raise serializers.ValidationError(
-                    f"File size must be under 10MB. Current size: {value.size / 1024 / 1024:.1f}MB"
+                    f"File size must be under {max_size_mb:.0f}MB. "
+                    f"Current size: {value.size / 1024 / 1024:.1f}MB"
                 )
 
-            # Allowed file types
-            allowed_extensions = [
-                '.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png',
-                '.xls', '.xlsx', '.ppt', '.pptx', '.zip'
-            ]
-            ext = value.name.lower().split('.')[-1] if '.' in value.name else ''
-            if ext and f'.{ext}' not in allowed_extensions:
+            # Extract extension and validate
+            ext = f'.{value.name.lower().split(".")[-1]}' if '.' in value.name else ''
+            if ext and ext not in settings.ALLOWED_UPLOAD_EXTENSIONS:
                 raise serializers.ValidationError(
-                    f"File type '.{ext}' not allowed. Allowed: {', '.join(allowed_extensions)}"
+                    f"File type '{ext}' not allowed. "
+                    f"Allowed: {', '.join(settings.ALLOWED_UPLOAD_EXTENSIONS)}"
                 )
 
         return value
