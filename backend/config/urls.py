@@ -40,6 +40,12 @@ router.register(r"auditlogs", AuditLogViewSet, basename="auditlog")
 # Custom admin URL for security (use environment variable or default to 'secure-admin/')
 ADMIN_URL = os.getenv('DJANGO_ADMIN_URL', 'secure-admin/')
 
+# Build SPA fallback regex dynamically to match ADMIN_URL
+# Escape special regex characters in ADMIN_URL
+import re
+_admin_pattern = re.escape(ADMIN_URL.rstrip('/')) + '/'
+_spa_exclude_pattern = rf"^(?!api/|{_admin_pattern}|static/|media/).*$"
+
 urlpatterns = [
     path(ADMIN_URL, admin.site.urls),
 
@@ -70,10 +76,9 @@ urlpatterns = [
         name="protected_media"
     ),
 
-    # SPA fallback (for frontend)
-    # Note: Update regex if ADMIN_URL is changed
+    # SPA fallback (for frontend) - dynamically excludes admin URL
     re_path(
-        r"^(?!api/|secure-admin/|static/|media/).*$",
+        _spa_exclude_pattern,
         never_cache(TemplateView.as_view(template_name="frontend/index.html")),
     ),
 ]

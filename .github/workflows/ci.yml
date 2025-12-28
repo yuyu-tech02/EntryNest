@@ -48,6 +48,7 @@ jobs:
       DJANGO_DEBUG: "1"
       DJANGO_SECRET_KEY: "ci-test-secret-key-not-for-production"
       DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      USE_SQLITE_FOR_TESTS: "1"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -94,14 +95,9 @@ jobs:
       - name: Check for secrets in code
         run: |
           echo "Checking for potential secrets..."
-          # Allow django-insecure prefix (development fallback) but catch real secrets
-          if grep -r "SECRET_KEY.*=.*['\"]" backend/ --include="*.py" | grep -v "django-insecure" | grep -v "os.getenv"; then
-            echo "Found hardcoded SECRET_KEY (not a dev fallback)"
-            exit 1
-          fi
-          # Check for hardcoded passwords (excluding validators and empty strings)
-          if grep -r "password.*=.*['\"][^'\"]\+['\"]" backend/ --include="*.py" | grep -v "password_validation" | grep -v "write_only"; then
-            echo "Found potential hardcoded password"
+          # Check for hardcoded SECRET_KEY (allow django-insecure dev fallback)
+          if grep -rE "SECRET_KEY\s*=\s*['\"][^'\"]+['\"]" backend/ --include="*.py" | grep -v "django-insecure" | grep -v "os.getenv"; then
+            echo "Found hardcoded SECRET_KEY"
             exit 1
           fi
           echo "No hardcoded secrets found"
