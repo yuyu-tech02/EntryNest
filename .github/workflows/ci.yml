@@ -43,6 +43,11 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # CI environment variables
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: "ci-test-secret-key-not-for-production"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -56,6 +61,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Create logs directory
+        run: mkdir -p logs
 
       - name: Run Django checks
         run: python manage.py check
