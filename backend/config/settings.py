@@ -18,28 +18,31 @@ import dj_database_url
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env file
+# Load environment variables from .env file (does not override existing env vars)
 load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
+# Detect CI environment
+IS_CI = os.getenv('CI', '').lower() == 'true' or os.getenv('GITHUB_ACTIONS', '').lower() == 'true'
+
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', '0') == '1'
+DEBUG = os.getenv('DJANGO_DEBUG', '1' if IS_CI else '0') == '1'
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 
-# In production (DEBUG=False), SECRET_KEY is required
-if not DEBUG and not SECRET_KEY:
+# In production (DEBUG=False and not CI), SECRET_KEY is required
+if not DEBUG and not SECRET_KEY and not IS_CI:
     raise ValueError(
         "DJANGO_SECRET_KEY environment variable must be set in production. "
         "Generate a secure key with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'"
     )
 
-# In development, use fallback (insecure, for development only)
-if DEBUG and not SECRET_KEY:
+# In development or CI, use fallback (insecure, for development only)
+if not SECRET_KEY:
     SECRET_KEY = 'django-insecure-dev-only-cuv9=9%kzoqmh2@y1*3&!#69enjo2$vqd+8o(+fe+-vue#%*ck'
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()]
