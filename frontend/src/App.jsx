@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { authApi } from './features/auth/authApi';
-import Layout from './components/Layout';
+import ProtectedRoute, { PublicRoute, ProfileSetupRoute } from './components/ProtectedRoute';
 import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
 import ProfileSetupPage from './features/auth/ProfileSetupPage';
@@ -18,20 +18,12 @@ export default function App() {
     initializeApp();
   }, []);
 
-  // Check if user needs to complete profile setup
-  const needsProfileSetup = (user) => {
-    return user && (user.display_name === '就活 太郎' && user.graduation_year === '2026年卒');
-  };
-
   const initializeApp = async () => {
     try {
-      // First, get CSRF token
       await authApi.getCsrfToken();
-      // Then check authentication
       const userData = await authApi.me();
       setUser(userData);
-    } catch (err) {
-      // Not authenticated
+    } catch {
       setUser(null);
     } finally {
       setLoading(false);
@@ -70,29 +62,17 @@ export default function App() {
         <Route
           path="/login"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <Navigate to="/profile-setup" replace />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            ) : (
+            <PublicRoute user={user}>
               <LoginPage onLogin={handleLogin} />
-            )
+            </PublicRoute>
           }
         />
         <Route
           path="/register"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <Navigate to="/profile-setup" replace />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            ) : (
+            <PublicRoute user={user}>
               <RegisterPage onLogin={handleLogin} />
-            )
+            </PublicRoute>
           }
         />
 
@@ -100,15 +80,9 @@ export default function App() {
         <Route
           path="/profile-setup"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <ProfileSetupPage user={user} onUpdateUser={handleUpdateUser} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProfileSetupRoute user={user}>
+              <ProfileSetupPage user={user} onUpdateUser={handleUpdateUser} />
+            </ProfileSetupRoute>
           }
         />
 
@@ -116,65 +90,33 @@ export default function App() {
         <Route
           path="/"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <Navigate to="/profile-setup" replace />
-              ) : (
-                <Layout user={user} onLogout={handleLogout}>
-                  <DashboardPage />
-                </Layout>
-              )
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute user={user} onLogout={handleLogout}>
+              <DashboardPage />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/companies"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <Navigate to="/profile-setup" replace />
-              ) : (
-                <Layout user={user} onLogout={handleLogout}>
-                  <CompanyListPage user={user} />
-                </Layout>
-              )
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute user={user} onLogout={handleLogout}>
+              <CompanyListPage user={user} />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/companies/:id"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <Navigate to="/profile-setup" replace />
-              ) : (
-                <Layout user={user} onLogout={handleLogout}>
-                  <CompanyDetailPage />
-                </Layout>
-              )
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute user={user} onLogout={handleLogout}>
+              <CompanyDetailPage />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/settings"
           element={
-            user ? (
-              needsProfileSetup(user) ? (
-                <Navigate to="/profile-setup" replace />
-              ) : (
-                <Layout user={user} onLogout={handleLogout}>
-                  <SettingsPage user={user} onUpdateUser={handleUpdateUser} onLogout={handleLogout} />
-                </Layout>
-              )
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <ProtectedRoute user={user} onLogout={handleLogout}>
+              <SettingsPage user={user} onUpdateUser={handleUpdateUser} onLogout={handleLogout} />
+            </ProtectedRoute>
           }
         />
       </Routes>

@@ -24,12 +24,16 @@ RATE_LIMIT_RESPONSE = Response(
 )
 
 
-def _build_user_payload(user) -> dict:
+def _build_user_payload(user, settings_obj=None) -> dict:
     """
     Build user payload with settings and profile information.
-    Creates UserSettings if it doesn't exist (for existing users).
+
+    Args:
+        user: The user object
+        settings_obj: Optional pre-fetched UserSettings. If None, will be fetched/created.
     """
-    settings_obj, _ = UserSettings.objects.get_or_create(user=user)
+    if settings_obj is None:
+        settings_obj, _ = UserSettings.objects.get_or_create(user=user)
     # Email: username=email を想定。emailフィールドがあれば優先。
     email = getattr(user, "email", "") or getattr(user, "username", "")
     return {
@@ -167,4 +171,5 @@ class MeSettingsView(APIView):
         settings_obj.save(update_fields=update_fields)
         _create_audit_log(request, AuditLog.Action.SETTINGS_UPDATE, user=request.user)
 
-        return Response(_build_user_payload(request.user), status=status.HTTP_200_OK)
+        # Reuse the already-fetched settings_obj to avoid extra DB query
+        return Response(_build_user_payload(request.user, settings_obj), status=status.HTTP_200_OK)
