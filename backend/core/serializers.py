@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import Company, ESVersion, AuditLog
+from .utils import validate_file_signature
 
 User = get_user_model()
 
@@ -74,24 +75,31 @@ class ESVersionSerializer(serializers.ModelSerializer):
         return value
 
     def validate_file(self, value):
-        """Validate uploaded file type and size using settings constants."""
+        """Validate uploaded file type, size, and content using settings constants."""
         if value:
             max_size = settings.MAX_UPLOAD_FILE_SIZE
             max_size_mb = max_size / (1024 * 1024)
 
+            # Size validation
             if value.size > max_size:
                 raise serializers.ValidationError(
                     f"File size must be under {max_size_mb:.0f}MB. "
                     f"Current size: {value.size / 1024 / 1024:.1f}MB"
                 )
 
-            # Extract extension and validate
+            # Extract extension and validate against whitelist
             ext = f'.{value.name.lower().split(".")[-1]}' if '.' in value.name else ''
             if ext and ext not in settings.ALLOWED_UPLOAD_EXTENSIONS:
                 raise serializers.ValidationError(
                     f"File type '{ext}' not allowed. "
                     f"Allowed: {', '.join(settings.ALLOWED_UPLOAD_EXTENSIONS)}"
                 )
+
+            # MIME type validation via magic bytes
+            if ext:
+                is_valid, error_msg = validate_file_signature(value, ext)
+                if not is_valid:
+                    raise serializers.ValidationError(error_msg)
 
         return value
 

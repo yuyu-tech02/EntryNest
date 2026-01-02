@@ -85,7 +85,65 @@
 
 ---
 
-## 本番環境デプロイ手順
+## Render へのデプロイ（Docker不要・推奨）
+
+**Render**は Docker なしで Python + Node.js アプリをデプロイ可能な PaaS です。
+
+### 方法1: Blueprint（render.yaml）を使う自動セットアップ
+
+1. **Render アカウント作成**: https://render.com/
+2. **リポジトリ連携**: New → Blueprint → GitHubリポジトリを選択
+3. Render が `render.yaml` を検出し、Web Service + Database を自動作成
+4. **環境変数を設定**（Dashboard → Environment）:
+   - `DJANGO_ALLOWED_HOSTS`: `your-app.onrender.com`
+   - `CORS_ALLOWED_ORIGINS`: `https://your-app.onrender.com`
+5. デプロイ完了を待つ（初回は10分程度）
+
+### 方法2: 手動セットアップ
+
+#### Step 1: PostgreSQL Database 作成
+1. Render Dashboard → New → PostgreSQL
+2. Name: `entrynest-db`
+3. 作成後、`Internal Database URL` をコピー
+
+#### Step 2: Web Service 作成
+1. New → Web Service → GitHubリポジトリ選択
+2. 設定:
+   - **Name**: `entrynest`
+   - **Runtime**: Python
+   - **Build Command**: `./build.sh`
+   - **Start Command**: `cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`
+
+#### Step 3: 環境変数設定
+```
+PYTHON_VERSION=3.12.0
+NODE_VERSION=20
+DJANGO_DEBUG=0
+DJANGO_SECRET_KEY=<自動生成 or 手動設定>
+DJANGO_ALLOWED_HOSTS=your-app.onrender.com
+DATABASE_URL=<Step1でコピーしたURL>
+CORS_ALLOWED_ORIGINS=https://your-app.onrender.com
+DJANGO_ADMIN_URL=secure-admin/
+```
+
+### デプロイ後の確認
+
+- **SPA表示**: `https://your-app.onrender.com/`
+- **ヘルスチェック**: `https://your-app.onrender.com/api/health`
+- **管理画面**: `https://your-app.onrender.com/secure-admin/`
+
+### Superuser作成（初回のみ）
+
+RenderのShell機能を使用:
+```bash
+cd backend
+python manage.py createsuperuser
+```
+
+---
+
+## 本番環境デプロイ手順（Docker使用）
+
 
 ### 1. 環境変数の設定
 

@@ -63,8 +63,8 @@ export default function Dashboard({ companies }) {
 const styles = {
   dashboard: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '16px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: '12px',
     marginBottom: '24px',
   },
   card: {

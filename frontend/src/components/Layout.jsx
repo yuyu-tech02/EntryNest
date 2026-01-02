@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FiGrid, FiBriefcase, FiSettings, FiPlus } from 'react-icons/fi';
+import { FiGrid, FiBriefcase, FiSettings, FiPlus, FiMenu, FiX } from 'react-icons/fi';
 import { colors } from '../styles/colors';
 import { companyApi } from '../features/companies/companyApi';
 import SidebarCalendar from './SidebarCalendar';
@@ -9,10 +9,30 @@ export default function Layout({ user, onLogout, children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     loadCompanies();
   }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Close mobile menu on navigation
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const loadCompanies = async () => {
     try {
@@ -33,15 +53,71 @@ export default function Layout({ user, onLogout, children }) {
 
   const isActive = (path) => location.pathname === path;
 
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
   return (
     <div style={styles.container}>
+      {/* Mobile Header */}
+      {isMobile && (
+        <header style={styles.mobileHeader}>
+          <div style={styles.mobileHeaderContent}>
+            <div style={styles.mobileLogo}>
+              <FiBriefcase size={20} color={colors.primary} />
+              <span style={styles.mobileLogoText}>EntryNest</span>
+            </div>
+            <button
+              onClick={toggleMobileMenu}
+              style={styles.hamburgerButton}
+              aria-label={isMobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'}
+              aria-expanded={isMobileMenuOpen}
+            >
+              {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            </button>
+          </div>
+        </header>
+      )}
+
+      {/* Overlay for mobile menu */}
+      {isMobile && isMobileMenuOpen && (
+        <div
+          style={styles.overlay}
+          onClick={() => setIsMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside style={styles.sidebar}>
-        {/* Logo */}
-        <div style={styles.logo}>
-          <FiBriefcase size={24} color={colors.primary} />
-          <span style={styles.logoText}>EntryNest</span>
-        </div>
+      <aside
+        style={{
+          ...styles.sidebar,
+          ...(isMobile ? styles.sidebarMobile : {}),
+          ...(isMobile && isMobileMenuOpen ? styles.sidebarMobileOpen : {}),
+        }}
+        aria-hidden={isMobile && !isMobileMenuOpen}
+      >
+        {/* Logo (desktop only) */}
+        {!isMobile && (
+          <div style={styles.logo}>
+            <FiBriefcase size={24} color={colors.primary} />
+            <span style={styles.logoText}>EntryNest</span>
+          </div>
+        )}
+
+        {/* Mobile close button */}
+        {isMobile && (
+          <div style={styles.mobileMenuHeader}>
+            <span style={styles.mobileMenuTitle}>メニュー</span>
+            <button
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={styles.closeButton}
+              aria-label="メニューを閉じる"
+            >
+              <FiX size={24} />
+            </button>
+          </div>
+        )}
 
         {/* Add Entry Button */}
         <button
@@ -53,7 +129,7 @@ export default function Layout({ user, onLogout, children }) {
         </button>
 
         {/* Navigation */}
-        <nav style={styles.nav}>
+        <nav style={styles.nav} role="navigation" aria-label="メインナビゲーション">
           <Link
             to="/"
             style={{
@@ -76,10 +152,12 @@ export default function Layout({ user, onLogout, children }) {
           </Link>
         </nav>
 
-        {/* Calendar */}
-        <div style={styles.calendarSection}>
-          <SidebarCalendar companies={companies} />
-        </div>
+        {/* Calendar (desktop only) */}
+        {!isMobile && (
+          <div style={styles.calendarSection}>
+            <SidebarCalendar companies={companies} />
+          </div>
+        )}
 
         {/* User Info */}
         <div style={styles.userSection}>
@@ -103,9 +181,14 @@ export default function Layout({ user, onLogout, children }) {
       </aside>
 
       {/* Main Content */}
-      <div style={styles.main}>
-        {/* Page Content */}
-        <main style={styles.content}>
+      <div style={{
+        ...styles.main,
+        ...(isMobile ? styles.mainMobile : {}),
+      }}>
+        <main style={{
+          ...styles.content,
+          ...(isMobile ? styles.contentMobile : {}),
+        }}>
           {children}
         </main>
       </div>
@@ -119,14 +202,104 @@ const styles = {
     minHeight: '100vh',
     backgroundColor: colors.background,
   },
+  // Mobile Header
+  mobileHeader: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '56px',
+    backgroundColor: colors.surface,
+    borderBottom: `1px solid ${colors.border}`,
+    zIndex: 100,
+  },
+  mobileHeaderContent: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: '100%',
+    padding: '0 16px',
+  },
+  mobileLogo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  mobileLogoText: {
+    fontSize: '18px',
+    fontWeight: '700',
+    color: colors.primary,
+    fontFamily: "'Poppins', sans-serif",
+  },
+  hamburgerButton: {
+    background: 'none',
+    border: 'none',
+    padding: '8px',
+    cursor: 'pointer',
+    color: colors.text,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '8px',
+  },
+  // Overlay
+  overlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 199,
+  },
+  // Sidebar
   sidebar: {
-    width: '360px',
+    width: '320px',
     backgroundColor: colors.surface,
     borderRight: `1px solid ${colors.border}`,
     display: 'flex',
     flexDirection: 'column',
     padding: '24px 20px',
     overflowY: 'auto',
+    flexShrink: 0,
+  },
+  sidebarMobile: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: '280px',
+    zIndex: 200,
+    transform: 'translateX(-100%)',
+    transition: 'transform 0.3s ease-in-out',
+    paddingTop: '16px',
+  },
+  sidebarMobileOpen: {
+    transform: 'translateX(0)',
+  },
+  mobileMenuHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '16px',
+    paddingBottom: '16px',
+    borderBottom: `1px solid ${colors.border}`,
+  },
+  mobileMenuTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: colors.text,
+  },
+  closeButton: {
+    background: 'none',
+    border: 'none',
+    padding: '8px',
+    cursor: 'pointer',
+    color: colors.textSecondary,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '8px',
   },
   logo: {
     display: 'flex',
@@ -192,6 +365,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+    marginTop: 'auto',
   },
   userInfo: {
     display: 'flex',
@@ -210,14 +384,19 @@ const styles = {
     justifyContent: 'center',
     fontSize: '16px',
     fontWeight: '600',
+    flexShrink: 0,
   },
   userDetails: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     fontSize: '14px',
     fontWeight: '600',
     color: colors.text,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   userYear: {
     fontSize: '12px',
@@ -235,15 +414,24 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'all 0.2s',
+    flexShrink: 0,
   },
+  // Main content
   main: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
+    minWidth: 0,
+  },
+  mainMobile: {
+    paddingTop: '56px',
   },
   content: {
     flex: 1,
     padding: '32px',
     overflow: 'auto',
+  },
+  contentMobile: {
+    padding: '16px',
   },
 };

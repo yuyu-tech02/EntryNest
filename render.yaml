@@ -1,0 +1,49 @@
+# render.yaml - Render Blueprint Specification
+# https://render.com/docs/blueprint-spec
+#
+# Deploy with: Connect this repo to Render and it will auto-detect this file
+
+services:
+  - type: web
+    name: entrynest
+    runtime: python
+    region: oregon  # or choose: frankfurt, singapore, ohio
+    plan: free  # Options: free, starter, standard, pro
+    
+    # Build settings
+    buildCommand: "./build.sh"
+    startCommand: "cd backend && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --worker-class gthread --timeout 120 --access-logfile - --error-logfile -"
+    
+    # Auto-deploy on push
+    autoDeploy: true
+    
+    # Health check
+    healthCheckPath: /api/health
+    
+    # Environment variables
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: NODE_VERSION
+        value: "20"
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true  # Render will auto-generate a secure key
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false  # Set manually in Render dashboard
+      - key: DATABASE_URL
+        fromDatabase:
+          name: entrynest-db
+          property: connectionString
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false  # Set manually: https://your-app.onrender.com
+      - key: DJANGO_ADMIN_URL
+        value: "secure-admin/"
+
+databases:
+  - name: entrynest-db
+    plan: free  # Options: free, starter, standard, pro
+    databaseName: entrynest
+    user: entrynest
+    region: oregon
